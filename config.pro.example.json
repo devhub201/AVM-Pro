@@ -1,0 +1,38 @@
+{
+  "token": "PASTE_BOT_TOKEN",
+  "brand_name": "AxionHost",
+  "prefix": ".",
+  "main_admin_id": "YOUR_DISCORD_USER_ID",
+  "guild_id": "YOUR_SERVER_ID",
+  "server_ip": "YOUR_NODE_PUBLIC_IP",
+  "node_name": "Node-1",
+  "logo_url": "",
+  "banner_url": "",
+  "alert_channel_id": "",
+  "status_channel_id": "",
+  "storage_pool": "default",
+  "pinggy_token": "",
+
+  "payment_channel_id": "",
+  "invoice_channel_id": "",
+
+  "upi_id": "yourname@bank",
+  "upi_name": "AxionHost",
+  "upi_qr_url": "",
+  "crypto_wallets": { "USDT-TRC20": "", "USDT-BEP20": "" },
+  "razorpay_key_id": "",
+  "razorpay_key_secret": "",
+  "stripe_secret_key": "",
+  "paypal_client_id": "",
+  "paypal_secret": "",
+  "paypal_mode": "live",
+  "return_url": "https://discord.com/app",
+
+  "usd_rate": "85",
+  "tax_percent": "0",
+  "tax_label": "GST",
+  "grace_days": "3",
+  "delete_alert_days": "7",
+  "reminder_days": "7,3,1",
+  "max_vps_per_user": "5"
+}
