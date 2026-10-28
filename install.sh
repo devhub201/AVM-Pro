@@ -508,4 +508,8 @@ main() {
 }
 
 # run only when executed (lets tests `source` this file)
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
+
+# end of install.sh
