@@ -1,0 +1,11 @@
+# secrets & runtime data - NEVER upload these
+config.json
+.env
+*.db
+*.log
+.install.log
+venv/
+__pycache__/
+*.pyc
+*.bak*
+*.tmp
