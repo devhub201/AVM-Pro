@@ -274,3 +274,18 @@ Change anything: `.proplan list` · `.proplan add` · `.proplan edit pro price 3
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=110&section=footer" alt="" />
 
 </div>
+
+
+## ✨ v1.1 — Extras (`avm_extras.py`)
+Set up everything from Discord — no config editing.
+
+| Area | Commands |
+|---|---|
+| 💳 Payments | `.setupi <id@bank> [name]` · `.setqr` (attach image) · `.delqr` · `.setwallet <coin> <addr>` · `.delwallet` · `.payinfo` |
+| 🎫 Tickets | `.ticketsetup [#channel]` (panel with topic menu) · `.setticketcategory <category>` · `.setsupportrole @role` · `.close` · `.tadd @user` — Claim / Close buttons, transcripts saved to the log channel and DM'd to the user |
+| 🧾 Logs | `.setlog <tickets\|mod\|vps\|reminders\|payments> #channel` · `.dellog` · `.logs` — every staff command is audited in `mod` |
+| ⏰ Reminders | `.setreminders 7 3 1` (days before expiry) · `.upcoming [days]` |
+| 📊 Dashboard | `.dashboard` — revenue (month / all-time), subscriptions, renewals, tickets, VPS |
+
+Quick start: `.setupi you@bank` → `.setqr` → `.setlog tickets #ticket-logs` → `.setlog mod #staff-logs` → `.ticketsetup #support`.
+The bot needs **Manage Channels**, **Manage Roles** and **Read Message History** for tickets.

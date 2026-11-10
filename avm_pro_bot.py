@@ -7426,6 +7426,9 @@ async def create_order_and_show(interaction, state, method: str, back_view=None)
         if qr:
             files = [discord.File(io.BytesIO(qr), filename='upi_qr.png')]
             embed.set_image(url='attachment://upi_qr.png')
+        elif os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'upi_qr.png')):
+            files = [discord.File(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'upi_qr.png'), filename='upi_qr.png')]
+            embed.set_image(url='attachment://upi_qr.png')
         elif UPI_QR_URL:
             embed.set_image(url=UPI_QR_URL)
     view = PaymentView(interaction.user, oid)
@@ -8740,6 +8743,11 @@ async def _pro_setup_hook():
     await _base_setup_hook()
     for view in (StaffReviewView(), RetryView(), ShopView(), RenewReminderView()):
         bot.add_view(view)
+    try:
+        import avm_extras
+        avm_extras.setup_extras()
+    except Exception as e:   # never let the extras stop the core bot
+        logger.error(f"avm_extras failed to load: {e}", exc_info=True)
     if not billing_loop.is_running():
         billing_loop.start()
 
