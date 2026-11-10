@@ -11,6 +11,8 @@
 #   ./install.sh show                  print config (token hidden)
 #   ./install.sh service               install + start the 24/7 systemd service
 #   ./install.sh update <url>          download a new bot file, verify, swap, restart
+#   ./install.sh host                  install LXD + LXCFS + tools (root)
+#   ./install.sh doctor                health check
 #   ./install.sh status | start | stop | restart | logs | help
 #
 set -uo pipefail
@@ -233,7 +235,7 @@ cmd_install() {
   find_bot
   ok "Bot file: $(basename "$BOT")"
   [ "$(id -u)" -eq 0 ] && ok "Running as root" || warn "Not root — the 24/7 service step needs sudo"
-  if command -v lxc >/dev/null 2>&1; then ok "LXD found"; else warn "LXD not found — install it: snap install lxd && lxd init --auto"; fi
+  if command -v lxc >/dev/null 2>&1; then ok "LXD found"; else warn "LXD not found — run: sudo ./install.sh host"; fi
   nap 0.3
 
   step 2 4 "Preparing Python environment"
@@ -252,6 +254,7 @@ cmd_install() {
   ask "Your server (guild) ID" guild_id digits
   ask "This node's public IP" server_ip
   ask "Node name" node_name "" "e.g. Node-1"
+  ask "Pinggy token (optional, removes SSH tunnel limit)" pinggy_token secret
   local L B2
   printf ' %s❯%s %sLogo URL%s %s(direct image link, Enter to skip)%s: ' "$PUR" "$R" "$B$WHT" "$R" "$GRY" "$R"; read -r L
   if [ -n "$L" ]; then (check_url "$L") && cfg_set logo_url "$L" && ok "Logo saved" || warn "Logo skipped"; fi
@@ -442,6 +445,15 @@ cmd_update() {
   cp "$BOT" "$BOT.bak-$(date +%Y%m%d-%H%M%S)" && ok "Old file backed up"
   cat "$tmp" >"$BOT" && rm -f "$tmp"
   ok "Updated $(basename "$BOT")"
+  local base="${url%/*}" f t2
+  for f in avm_extras.py avm_emojis.py; do
+    [ -f "$DIR/$f" ] || [ "$f" = avm_extras.py ] || continue
+    t2="$(mktemp)"
+    if curl -fsSL --max-time 60 -o "$t2" "$base/$f" 2>/dev/null && python3 -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$t2" 2>/dev/null; then
+      cp "$DIR/$f" "$DIR/$f.bak" 2>/dev/null; cat "$t2" >"$DIR/$f"; ok "Updated $f"
+    else info "Skipped $f (not found next to that URL)"; fi
+    rm -f "$t2"
+  done
   if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$SVC" 2>/dev/null; then
     run_step "Restarting the bot" systemctl restart "$SVC" || die "Restart failed — roll back with the .bak file."
   else
@@ -469,6 +481,66 @@ cmd_ctl() {  # start|stop|restart
   ok "Done"
 }
 
+# ───────────────────────── host prep (LXD • LXCFS • SSH tools) ─────────────────────────
+cmd_host() {
+  [ "$(id -u)" -eq 0 ] || die "Run as root:  sudo ./install.sh host"
+  banner
+  : >"$WORKLOG"
+  local pm=""
+  for p in apt-get dnf yum; do command -v $p >/dev/null 2>&1 && pm=$p && break; done
+  step 1 3 "Base tools"
+  case "$pm" in
+    apt-get) run_step "Installing curl, git, openssh-client, lxcfs" bash -c "apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y curl git openssh-client lxcfs python3-venv python3-pip" || warn "Some packages failed — see $WORKLOG" ;;
+    dnf|yum) run_step "Installing curl, git, openssh-clients" $pm install -y curl git openssh-clients python3 || warn "Some packages failed" ;;
+    *) warn "No apt/dnf/yum — install curl, git, lxcfs manually" ;;
+  esac
+  step 2 3 "LXD"
+  if command -v lxc >/dev/null 2>&1; then ok "LXD already installed"
+  elif command -v snap >/dev/null 2>&1; then
+    run_step "Installing LXD (snap)" snap install lxd || die "LXD install failed"
+  elif [ "$pm" = apt-get ]; then
+    run_step "Installing snapd" bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y snapd" || die "snapd install failed"
+    run_step "Installing LXD (snap)" snap install lxd || die "LXD install failed"
+  else die "Install LXD manually, then re-run."; fi
+  if lxc storage list --format csv 2>/dev/null | grep -q .; then ok "LXD already initialised"
+  else run_step "Initialising LXD (lxd init --auto)" bash -c "lxd init --auto" || warn "lxd init failed — run it manually"; fi
+  step 3 3 "Checks"
+  [ -e /dev/kvm ] && ok "KVM available" || info "No /dev/kvm (fine — containers do not need it)"
+  command -v lxcfs >/dev/null 2>&1 && ok "LXCFS installed" || warn "LXCFS missing (neofetch/free will show host resources)"
+  ok "Host is ready — now run: ./install.sh"
+  printf '\n %s♥ Made by %s%s%s\n\n' "$GRY" "$B$PNK" "$AUTHOR" "$R"
+}
+
+# ───────────────────────── doctor: find what is broken ─────────────────────────
+cmd_doctor() {
+  banner
+  local bad_n=0
+  chk() { # label cmd…
+    local l="$1"; shift
+    if "$@" >/dev/null 2>&1; then ok "$l"; else bad "$l"; bad_n=$((bad_n+1)); fi
+  }
+  find_bot
+  chk "Python 3.9+" python3 -c 'import sys;sys.exit(sys.version_info<(3,9))'
+  chk "Bot file compiles" python3 -m py_compile "$BOT"
+  [ -f "$DIR/avm_extras.py" ] && chk "avm_extras.py compiles" python3 -m py_compile "$DIR/avm_extras.py" \
+    || { warn "avm_extras.py missing (tickets/logs/UPI-QR commands off)"; }
+  [ -f "$DIR/avm_emojis.py" ] || warn "avm_emojis.py missing (normal emojis are used)"
+  chk "Virtualenv + discord.py" "$VENV/bin/python" -c 'import discord'
+  chk "Config file exists" test -s "$CFG"
+  [ -n "$(cfg_get token)" ] && ok "Bot token set" || { bad "Bot token missing"; bad_n=$((bad_n+1)); }
+  [ -n "$(cfg_get server_ip)" ] && ok "Server IP: $(cfg_get server_ip)" || warn "server_ip not set (port-forward shows a placeholder)"
+  chk "LXD (lxc) works" lxc list
+  command -v lxcfs >/dev/null 2>&1 && ok "LXCFS present" || warn "LXCFS missing — run: sudo ./install.sh host"
+  chk "Internet (discord.com)" curl -sS --max-time 10 -o /dev/null https://discord.com
+  chk "Internet (sshx.io)   — for SSHX" curl -sS --max-time 10 -o /dev/null https://sshx.io
+  if curl -sS --max-time 10 -o /dev/null https://pinggy.io 2>/dev/null; then ok "Internet (pinggy.io) — for SSH"; else bad "Cannot reach pinggy.io — SSH button will fail"; bad_n=$((bad_n+1)); fi
+  [ -n "$(cfg_get pinggy_token)" ] && ok "Pinggy token set (no tunnel limit)" || info "No Pinggy token — free tunnels: ~1 per IP, 60 min"
+  command -v systemctl >/dev/null 2>&1 && { systemctl is-active --quiet "$SVC" 2>/dev/null && ok "Service running" || warn "Service not running — sudo ./install.sh service"; }
+  printf '\n'
+  if [ "$bad_n" -eq 0 ]; then ok "${B}All good${R}"; else bad "$bad_n problem(s) found — fix the ✘ lines above"; fi
+  printf '\n'
+}
+
 cmd_help() {
   banner
   local rows=(
@@ -480,6 +552,8 @@ cmd_help() {
     "wallet add/remove/list|Crypto payment wallets (Pro)"
     "service|Install + start the 24/7 service"
     "update <url>|Safely update the bot file"
+    "host|Install LXD + LXCFS + tools (run first, root)"
+    "doctor|Health check: finds what is broken"
     "status|Is it running? which version?"
     "start / stop / restart|Control the service"
     "logs|Follow the live log"
@@ -499,6 +573,8 @@ main() {
     wallet)          shift; cmd_wallet "$@" ;;
     service)         cmd_service ;;
     update)          shift; cmd_update "$@" ;;
+    host)            cmd_host ;;
+    doctor)          cmd_doctor ;;
     status)          cmd_status ;;
     start|stop|restart) cmd_ctl "$1" ;;
     logs)            command -v journalctl >/dev/null 2>&1 || die "journalctl not found"; journalctl -u "$SVC" -f -n 50 ;;
