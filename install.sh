@@ -446,8 +446,8 @@ cmd_update() {
   cat "$tmp" >"$BOT" && rm -f "$tmp"
   ok "Updated $(basename "$BOT")"
   local base="${url%/*}" f t2
-  for f in avm_extras.py avm_emojis.py; do
-    [ -f "$DIR/$f" ] || [ "$f" = avm_extras.py ] || continue
+  for f in avm_extras.py avm_transit.py avm_emojis.py; do
+    [ -f "$DIR/$f" ] || [ "$f" = avm_extras.py ] || [ "$f" = avm_transit.py ] || continue
     t2="$(mktemp)"
     if curl -fsSL --max-time 60 -o "$t2" "$base/$f" 2>/dev/null && python3 -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$t2" 2>/dev/null; then
       cp "$DIR/$f" "$DIR/$f.bak" 2>/dev/null; cat "$t2" >"$DIR/$f"; ok "Updated $f"

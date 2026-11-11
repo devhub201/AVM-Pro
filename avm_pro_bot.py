@@ -2634,6 +2634,11 @@ async def delete_vps(ctx, user: discord.Member, vps_number: int, *, reason: str 
     await ctx.send(embed=create_info_embed("Deleting VPS", f"Removing VPS #{vps_number}..."))
     
     try:
+        try:
+            import avm_transit
+            await avm_transit.release_dedicated_ip(container_name)
+        except Exception as e:
+            logger.warning(f"Dedicated IP release failed for {container_name}: {e}")
         await execute_lxc(f"lxc delete {container_name} --force")
         
         del vps_data[user_id][vps_number - 1]
@@ -3507,6 +3512,11 @@ async def confirm_purge(ctx, user_id: str):
     deleted_count = 0
     for vps in vps_data[user_id][:]:
         try:
+            try:
+                import avm_transit
+                await avm_transit.release_dedicated_ip(vps['container_name'])
+            except Exception:
+                pass
             await execute_lxc(f"lxc delete {vps['container_name']} --force")
             deleted_count += 1
         except:
@@ -4777,6 +4787,11 @@ async def reinstall_container(vps: Dict[str, Any], os_version: str):
         vps['os_version'] = os_version
         vps['status'] = 'running'
         save_vps_data()
+        try:
+            import avm_transit
+            await avm_transit.reprovision_if_dedicated(name)
+        except Exception as e:
+            logger.warning(f"Dedicated IP re-provision after reinstall failed for {name}: {e}")
 
 
 class ReinstallView(discord.ui.View):
@@ -7766,6 +7781,14 @@ async def _fulfill_new(order: Dict[str, Any]) -> tuple:
         if not info.get('_config_ok'):
             await staff_billing_alert(create_warning_embed("Docker Config Incomplete", f"`{container}` deployed but the Docker-ready LXC config did not fully apply. Check bot.log."), ping=False)
     plan = get_plan(order['plan_key'])
+    if plan and plan.get('ip_type') == 'dedicated':
+        try:
+            import avm_transit
+            ded_ip = await avm_transit.assign_dedicated_ip(container)
+            await staff_billing_alert(create_success_embed("Dedicated IPv4 Assigned", f"`{container}` → **{ded_ip}**"), ping=False)
+        except Exception as e:
+            logger.error(f"Dedicated IP assignment failed for {container}: {e}", exc_info=True)
+            await staff_billing_alert(create_error_embed("Dedicated IPv4 Failed", f"`{container}` is live but did **not** get a dedicated IPv4.\n```{str(e)[:500]}```Run `.addip` if the pool is empty, then assign manually."))
     upsert_sub(container, uid, order['plan_key'], order['plan_name'], plan['price'] if plan else order['unit_price'], order['days'], expires)
     if plan and plan['stock'] > 0:
         db_exec('UPDATE pro_plans SET stock = MAX(0, stock - 1) WHERE key = ?', (order['plan_key'],))
@@ -8528,10 +8551,15 @@ async def proplan_cmd(ctx, action: str = 'list', *args: str):
         if field == 'emoji' and value not in EMOJI_FALLBACK:
             await ctx.send(embed=create_error_embed("Invalid", "Emoji must be one of: " + ", ".join(sorted(EMOJI_FALLBACK))[:900]))
             return
-        if field not in ('name', 'ram', 'cpu', 'disk', 'price', 'perks', 'emoji', 'sort'):
-            await ctx.send(embed=create_error_embed("Invalid Field", "Fields: name, ram, cpu, disk, price, perks, emoji, sort"))
+        if field == 'ip_type' and value.lower() not in ('shared', 'dedicated'):
+            await ctx.send(embed=create_error_embed("Invalid", "`ip_type` must be `shared` or `dedicated` (use `.setdedicated` instead, it's the same thing)."))
+            return
+        if field not in ('name', 'ram', 'cpu', 'disk', 'price', 'perks', 'emoji', 'sort', 'ip_type'):
+            await ctx.send(embed=create_error_embed("Invalid Field", "Fields: name, ram, cpu, disk, price, perks, emoji, sort, ip_type"))
             return
         val: Any = _to_float(value) if field == 'price' else (_to_int(value) if field in ('ram', 'cpu', 'disk', 'sort') else value[:300])
+        if field == 'ip_type':
+            val = value.lower()
         db_exec(f'UPDATE pro_plans SET {field} = ? WHERE key = ?', (val, key))
         await ctx.send(embed=create_success_embed("Plan Updated", f"`{key}`.{field} = {val}"))
     else:
@@ -8748,6 +8776,11 @@ async def _pro_setup_hook():
         avm_extras.setup_extras()
     except Exception as e:   # never let the extras stop the core bot
         logger.error(f"avm_extras failed to load: {e}", exc_info=True)
+    try:
+        import avm_transit
+        avm_transit.setup_transit()
+    except Exception as e:   # never let the dedicated-IPv4 add-on stop the core bot
+        logger.error(f"avm_transit failed to load: {e}", exc_info=True)
     if not billing_loop.is_running():
         billing_loop.start()
 
