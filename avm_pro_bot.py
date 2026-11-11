@@ -8781,6 +8781,11 @@ async def _pro_setup_hook():
         avm_transit.setup_transit()
     except Exception as e:   # never let the dedicated-IPv4 add-on stop the core bot
         logger.error(f"avm_transit failed to load: {e}", exc_info=True)
+    try:
+        import avm_kvm
+        avm_kvm.setup_kvm()
+    except Exception as e:   # never let the KVM add-on stop the core bot
+        logger.error(f"avm_kvm failed to load: {e}", exc_info=True)
     if not billing_loop.is_running():
         billing_loop.start()
 
